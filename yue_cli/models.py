@@ -17,6 +17,7 @@ class Lyrics:
 
     sections: list[LyricsSection] = field(default_factory=list)
     raw: str | None = None
+    file: str | None = None  # External file path (resolved by parser)
 
     def to_text(self) -> str:
         """Convert lyrics to YuE format."""

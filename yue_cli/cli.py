@@ -51,6 +51,10 @@ def run(
         bool,
         typer.Option("--dry-run", "-n", help="Show commands without executing"),
     ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress YuE output (only show progress)"),
+    ] = False,
     yue_path: Annotated[
         Optional[Path],
         typer.Option("--yue-path", help="Path to YuE installation"),
@@ -80,7 +84,7 @@ def run(
             console.print(f"\n{'─' * 60}")
             console.print(f"[bold cyan]Processing:[/bold cyan] {yaml_file.name}")
             console.print(f"{'─' * 60}")
-            results = _run_single_config(yaml_file, variation, output_dir, dry_run, yue)
+            results = _run_single_config(yaml_file, variation, output_dir, dry_run, yue, quiet)
             all_results.extend(results)
 
         # Summary table
@@ -116,7 +120,7 @@ def run(
         else:
             console.print("[green]All variations completed successfully[/green]")
     else:
-        results = _run_single_config(config, variation, output_dir, dry_run, yue)
+        results = _run_single_config(config, variation, output_dir, dry_run, yue, quiet)
         failures = [r for r in results if not r["success"]]
         if failures:
             raise typer.Exit(1)
@@ -128,9 +132,16 @@ def _run_single_config(
     output_dir: Optional[str],
     dry_run: bool,
     yue_path: Path,
+    quiet: bool = False,
 ) -> list[dict]:
     """Run a single config file. Returns list of results."""
-    runner = Runner(yue_path=yue_path, dry_run=dry_run)
+    runner = Runner(yue_path=yue_path, dry_run=dry_run, quiet=quiet)
+
+    # Set progress callback
+    def on_progress(current: int, total: int, name: str) -> None:
+        console.print(f"\n[bold cyan]▶ Variation [{current}/{total}]: {name}[/bold cyan]")
+
+    runner.set_progress_callback(on_progress)
 
     console.print(f"[bold]Running config:[/bold] {config}")
 

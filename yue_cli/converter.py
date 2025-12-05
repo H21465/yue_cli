@@ -150,11 +150,18 @@ class Runner:
         yue_path: Path,
         *,
         dry_run: bool = False,
+        quiet: bool = False,
     ) -> None:
         """Initialize Runner with YuE path and options."""
         self.yue_path = yue_path
         self.infer_py_path = yue_path / "inference" / "infer.py"
         self.dry_run = dry_run
+        self.quiet = quiet
+        self._progress_callback: callable | None = None
+
+    def set_progress_callback(self, callback: callable) -> None:
+        """Set callback for progress updates."""
+        self._progress_callback = callback
 
     def run_config(
         self,
@@ -180,10 +187,15 @@ class Runner:
         song_name = config.metadata.name
 
         results = []
-        for cmd in commands:
+        total = len(commands)
+        for idx, cmd in enumerate(commands, 1):
             # Create output subdirectory for this variation
             var_output = base_output / song_name / cmd.name
             cmd.output.dir = str(var_output)
+
+            # Progress callback
+            if self._progress_callback:
+                self._progress_callback(idx, total, cmd.name)
 
             result = self._run_command(cmd)
             results.append(result)
@@ -225,18 +237,26 @@ class Runner:
             # Create output directory
             Path(cmd.output.dir).mkdir(parents=True, exist_ok=True)
 
-            # Execute
+            # Execute with real-time output (unless quiet mode)
             try:
-                subprocess.run(  # noqa: S603
-                    full_cmd,
-                    cwd=str(self.yue_path / "inference"),
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
+                if self.quiet:
+                    subprocess.run(  # noqa: S603
+                        full_cmd,
+                        cwd=str(self.yue_path / "inference"),
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+                else:
+                    # Real-time output to see Stage1/Stage2 progress
+                    subprocess.run(  # noqa: S603
+                        full_cmd,
+                        cwd=str(self.yue_path / "inference"),
+                        check=True,
+                    )
                 result["success"] = True
             except subprocess.CalledProcessError as e:
-                result["error"] = e.stderr or str(e)
+                result["error"] = e.stderr if hasattr(e, "stderr") and e.stderr else str(e)
             except OSError as e:
                 result["error"] = str(e)
 

@@ -23,12 +23,19 @@ from yue_cli.models import (
 class ConfigParser:
     """Parser for YuE YAML configuration files."""
 
+    def __init__(self) -> None:
+        """Initialize parser."""
+        self._config_dir: Path | None = None
+
     def parse_file(self, path: Path | str) -> YueConfig:
         """Parse a YAML configuration file."""
         path = Path(path)
         if not path.exists():
             msg = f"Config file not found: {path}"
             raise FileNotFoundError(msg)
+
+        # Store config directory for resolving relative paths
+        self._config_dir = path.parent
 
         with path.open(encoding="utf-8") as f:
             data = yaml.safe_load(f)
@@ -82,7 +89,24 @@ class ConfigParser:
         """Parse lyrics section."""
         lyrics = Lyrics()
 
-        if "raw" in data:
+        if "file" in data:
+            # External file reference
+            file_path = data["file"]
+            lyrics.file = file_path
+
+            # Resolve relative path from config directory
+            if self._config_dir is not None:
+                resolved_path = self._config_dir / file_path
+            else:
+                resolved_path = Path(file_path)
+
+            if not resolved_path.exists():
+                msg = f"Lyrics file not found: {resolved_path}"
+                raise FileNotFoundError(msg)
+
+            # Read file content as raw lyrics
+            lyrics.raw = resolved_path.read_text(encoding="utf-8")
+        elif "raw" in data:
             lyrics.raw = data["raw"]
         elif "sections" in data:
             lyrics.sections = [
