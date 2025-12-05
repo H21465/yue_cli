@@ -1,0 +1,43 @@
+version: "1.0"
+
+metadata:
+  name: "my-song"
+  description: "Multiple variations of the same song"
+
+lyrics:
+  sections:
+    - type: verse
+      text: |
+        Your verse lyrics here
+    - type: chorus
+      text: |
+        Your chorus lyrics here
+
+defaults:
+  generation:
+    stage1_model: "m-a-p/YuE-s1-7B-anneal-en-cot"
+    stage2_model: "m-a-p/YuE-s2-1B-general"
+    max_new_tokens: 3000
+    repetition_penalty: 1.1
+    run_n_segments: 2
+    stage2_batch_size: 4
+  output:
+    dir: "./output"
+    keep_intermediate: false
+    rescale: false
+  runtime:
+    cuda_idx: 0
+    disable_offload_model: false
+
+variations:
+  - name: "pop-female-v1"
+    genre:
+      tags: [pop, female, uplifting, bright vocal]
+    generation:
+      seed: 42
+
+  - name: "pop-female-v2"
+    genre:
+      tags: [pop, female, uplifting, bright vocal]
+    generation:
+      seed: 123

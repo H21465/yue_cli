@@ -1,0 +1,23 @@
+version: "1.0"
+
+metadata:
+  name: "my-song"
+  description: "A song generated with YuE"
+
+lyrics:
+  sections:
+    - type: verse
+      text: |
+        Your verse lyrics here
+    - type: chorus
+      text: |
+        Your chorus lyrics here
+
+genre:
+  tags:
+    - pop
+    - female
+    - uplifting
+
+generation:
+  seed: 42
