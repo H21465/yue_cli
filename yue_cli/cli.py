@@ -38,7 +38,7 @@ def get_yue_path() -> Path:
 
 @app.command()
 def run(
-    config: Annotated[Path, typer.Argument(help="Path to YAML config file")],
+    config: Annotated[Path, typer.Argument(help="Path to YAML config file or directory")],
     variation: Annotated[
         Optional[list[str]],
         typer.Option("--variation", "-v", help="Run specific variation(s) only"),
@@ -56,14 +56,81 @@ def run(
         typer.Option("--yue-path", help="Path to YuE installation"),
     ] = None,
 ) -> None:
-    """Run YuE inference from a YAML config file."""
+    """Run YuE inference from a YAML config file or all files in a directory."""
     if not config.exists():
-        console.print(f"[red]Error:[/red] Config file not found: {config}")
+        console.print(f"[red]Error:[/red] Path not found: {config}")
         raise typer.Exit(1)
 
     yue = yue_path or get_yue_path()
 
-    runner = Runner(yue_path=yue, dry_run=dry_run)
+    if config.is_dir():
+        yaml_files = sorted(config.glob("*.yaml")) + sorted(config.glob("*.yml"))
+        if not yaml_files:
+            console.print(f"[yellow]No YAML files found in {config}[/yellow]")
+            raise typer.Exit(0)
+
+        console.print(f"[bold]Running directory:[/bold] {config}")
+        console.print(f"[bold]Files:[/bold] {len(yaml_files)}")
+        if dry_run:
+            console.print("[yellow]Dry run mode - commands will not be executed[/yellow]")
+        console.print()
+
+        all_results: list[dict] = []
+        for yaml_file in yaml_files:
+            console.print(f"\n{'─' * 60}")
+            console.print(f"[bold cyan]Processing:[/bold cyan] {yaml_file.name}")
+            console.print(f"{'─' * 60}")
+            results = _run_single_config(yaml_file, variation, output_dir, dry_run, yue)
+            all_results.extend(results)
+
+        # Summary table
+        console.print(f"\n{'═' * 60}")
+        console.print("[bold]Summary[/bold]")
+        console.print(f"{'═' * 60}\n")
+
+        table = Table(title="All Results")
+        table.add_column("Config", style="cyan")
+        table.add_column("Variation", style="cyan")
+        table.add_column("Status")
+        table.add_column("Output Directory")
+
+        for result in all_results:
+            status = "[green]OK[/green]" if result["success"] else "[red]FAILED[/red]"
+            table.add_row(
+                result.get("config", ""),
+                result["name"],
+                status,
+                result["output_dir"],
+            )
+
+        console.print(table)
+
+        # Check for failures
+        failures = [r for r in all_results if not r["success"]]
+        success_count = len(all_results) - len(failures)
+        console.print(f"\n[bold]Total:[/bold] {success_count}/{len(all_results)} succeeded")
+
+        if failures:
+            console.print(f"[red]{len(failures)} failed[/red]")
+            raise typer.Exit(1)
+        else:
+            console.print("[green]All variations completed successfully[/green]")
+    else:
+        results = _run_single_config(config, variation, output_dir, dry_run, yue)
+        failures = [r for r in results if not r["success"]]
+        if failures:
+            raise typer.Exit(1)
+
+
+def _run_single_config(
+    config: Path,
+    variation: Optional[list[str]],
+    output_dir: Optional[str],
+    dry_run: bool,
+    yue_path: Path,
+) -> list[dict]:
+    """Run a single config file. Returns list of results."""
+    runner = Runner(yue_path=yue_path, dry_run=dry_run)
 
     console.print(f"[bold]Running config:[/bold] {config}")
 
@@ -75,6 +142,10 @@ def run(
         variation_filter=variation,
         output_dir_override=output_dir,
     )
+
+    # Add config name to results
+    for r in results:
+        r["config"] = config.name
 
     # Display results
     table = Table(title="Results")
@@ -99,7 +170,8 @@ def run(
     if failures:
         for f in failures:
             console.print(f"[red]Error in {f['name']}:[/red] {f.get('error', 'Unknown error')}")
-        raise typer.Exit(1)
+
+    return results
 
 
 @app.command(name="list")
@@ -321,32 +393,87 @@ def init(
 
 @app.command()
 def validate(
-    config: Annotated[Path, typer.Argument(help="Path to YAML config file")],
+    config: Annotated[Path, typer.Argument(help="Path to YAML config file or directory")],
 ) -> None:
-    """Validate a config file."""
+    """Validate a config file or all YAML files in a directory."""
     if not config.exists():
-        console.print(f"[red]Error:[/red] Config file not found: {config}")
+        console.print(f"[red]Error:[/red] Path not found: {config}")
         raise typer.Exit(1)
 
+    if config.is_dir():
+        yaml_files = sorted(config.glob("*.yaml")) + sorted(config.glob("*.yml"))
+        if not yaml_files:
+            console.print(f"[yellow]No YAML files found in {config}[/yellow]")
+            raise typer.Exit(0)
+
+        console.print(f"[bold]Validating directory:[/bold] {config}")
+        console.print(f"[bold]Files:[/bold] {len(yaml_files)}")
+        console.print()
+
+        results: list[tuple[Path, bool, str]] = []
+        for yaml_file in yaml_files:
+            valid, message = _validate_single_config(yaml_file)
+            results.append((yaml_file, valid, message))
+
+        # Results table
+        table = Table(title="Validation Results")
+        table.add_column("File", style="cyan")
+        table.add_column("Status")
+        table.add_column("Details")
+
+        for path, valid, message in results:
+            status = "[green]Valid[/green]" if valid else "[red]Invalid[/red]"
+            table.add_row(path.name, status, message)
+
+        console.print(table)
+
+        # Summary
+        valid_count = sum(1 for _, v, _ in results if v)
+        invalid_count = len(results) - valid_count
+        if invalid_count > 0:
+            console.print(f"\n[red]{invalid_count} invalid file(s)[/red]")
+            raise typer.Exit(1)
+        else:
+            console.print(f"\n[green]All {valid_count} file(s) valid[/green]")
+    else:
+        valid, message = _validate_single_config(config)
+        if not valid:
+            raise typer.Exit(1)
+
+
+def _validate_single_config(config: Path) -> tuple[bool, str]:
+    """Validate a single config file. Returns (is_valid, message)."""
     try:
         parser = ConfigParser()
         cfg = parser.parse_file(config)
 
+        mode = "Variations" if cfg.is_variations_mode() else "Simple"
+        variation_count = len(cfg.variations) if cfg.is_variations_mode() else 1
+
+        # Check for warnings
+        warnings = []
+        if not cfg.lyrics.sections and not cfg.lyrics.raw:
+            warnings.append("No lyrics defined")
+
+        message = f"{cfg.metadata.name} ({mode}, {variation_count} var)"
+        if warnings:
+            message += f" [yellow]⚠ {', '.join(warnings)}[/yellow]"
+
         console.print(f"[green]Valid:[/green] {config}")
         console.print(f"  Song: {cfg.metadata.name}")
-        console.print(f"  Mode: {'Variations' if cfg.is_variations_mode() else 'Simple'}")
-
+        console.print(f"  Mode: {mode}")
         if cfg.is_variations_mode():
-            console.print(f"  Variations: {len(cfg.variations)}")
+            console.print(f"  Variations: {variation_count}")
+        if warnings:
+            for w in warnings:
+                console.print(f"  [yellow]Warning:[/yellow] {w}")
 
-        # Validate lyrics
-        if not cfg.lyrics.sections and not cfg.lyrics.raw:
-            console.print("[yellow]Warning:[/yellow] No lyrics defined")
+        return True, message
 
     except Exception as e:
         console.print(f"[red]Invalid:[/red] {config}")
         console.print(f"  Error: {e}")
-        raise typer.Exit(1)
+        return False, str(e)
 
 
 @app.command()
