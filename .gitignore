@@ -48,3 +48,8 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+.task_status.md
+pyproject.toml
+uv.lock
+test_design

@@ -102,6 +102,7 @@ class Variation:
 class Defaults:
     """Default settings for all variations."""
 
+    genre: Genre = field(default_factory=Genre)
     generation: GenerationConfig = field(default_factory=GenerationConfig)
     audio_prompt: AudioPromptConfig = field(default_factory=AudioPromptConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
@@ -166,7 +167,7 @@ class YueConfig:
             # Variations mode: merge defaults with each variation
             defaults = self.defaults or Defaults()
             for var in self.variations:
-                genre = var.genre or Genre()
+                genre = var.genre or defaults.genre
                 generation = self._merge_generation(defaults.generation, var.generation)
                 audio_prompt = var.audio_prompt or defaults.audio_prompt
                 output = var.output or defaults.output

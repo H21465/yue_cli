@@ -172,6 +172,8 @@ class ConfigParser:
         """Parse defaults section."""
         defaults = Defaults()
 
+        if "genre" in data:
+            defaults.genre = self._parse_genre(data["genre"])
         if "generation" in data:
             defaults.generation = self._parse_generation(data["generation"])
         if "audio_prompt" in data:
